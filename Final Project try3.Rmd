@@ -1,0 +1,196 @@
+---
+title: "Final Project"
+author: "Ben Refael, Thalia Rahim, Nimrit Cheema"
+subtitle: MGSC 310 Problem Set Template
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+
+# Please leave this code chunk as is. It makes some slight formatting changes to alter the output to be more aesthetically pleasing. 
+
+library(knitr)
+
+# Change the number in set seed to your own favorite number
+set.seed(86)
+options(width=70)
+options(scipen=99)
+
+
+# this sets text outputted in code chunks to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = FALSE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               # change fig.width and fig.height to change the code height and width by default
+               fig.width = 5.5,  
+               fig.height = 4.5,
+               fig.align='center')
+
+
+```
+
+```{r setup-2}
+
+# Always print this out before your assignment
+sessionInfo()
+getwd()
+
+```
+
+
+<!-- ### start answering your problem set here -->
+<!-- You may export your homework in either html or pdf, with the former usually being easier. 
+     To export or compile your Rmd file: click above on 'Knit' then 'Knit to HTML' -->
+<!-- Be sure to submit both your .Rmd file and the compiled .html or .pdf file for full credit -->
+
+
+```{r setup-3}
+
+# load all your libraries in this chunk 
+library('tidyverse')
+library('glmnet')
+library('glmnetUtils')
+library('forcats')
+library('rsample')
+library("data.table")
+library('yardstick')
+library('plotROC')
+library('ISLR')
+library('ggplot2')
+library('ggthemes')
+library('coefplot')
+# note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
+
+```
+
+
+
+## Question 1
+
+1a) 
+
+```{r}
+houses <- read.csv(here::here("datasets", "BAC_dataset.csv"))
+houses_clean <- houses %>% mutate(MSZoning = as.factor(MSZoning), LotShape = as.factor(LotShape), LotConfig = as.factor(LotConfig), Neighborhood = as.factor(Neighborhood), Condition1 = as.factor(Condition1), BldgType = as.factor(BldgType), HouseStyle = as.factor(HouseStyle), pool = as.factor(pool), KitchenQual = as.factor(KitchenQual),   Furnished = as.factor(Furnished)) %>% rename("saleprice"= 1) %>% na.omit()
+                                  
+houses_split <- initial_split(houses_clean, prop = 0.75)
+houses_train <- training(houses_split)
+houses_test <- testing(houses_split)
+
+summary(houses_train)
+dim(houses_train)
+dim(houses_test)
+```
+
+1b) 
+
+```{r}
+lasso_fit <- cv.glmnet(saleprice ~., data = houses_train, alpha = 1)
+plot(lasso_fit)
+coef(lasso_fit, s = "lambda.1se")
+
+lasso_preds_train <- predict(lasso_fit, newdata = houses_train, type = "response")
+lasso_preds_test <- predict(lasso_fit, newdata = houses_test, type = "response")
+
+get_rmse <- function(true, predictions){sqrt(mean((true - predictions)^2))}
+get_rmse(houses_train$saleprice, lasso_preds_train)
+get_rmse(houses_test$saleprice, lasso_preds_test)
+
+dim(lasso_preds_train)
+dim(lasso_preds_test)
+
+coefpath(lasso_fit)
+```
+
+1c) 
+
+```{r}
+ridge_fit <- cv.glmnet(saleprice ~., data = houses_train, alpha = 0)
+plot(ridge_fit)
+coef(ridge_fit, s = "lambda.1se")
+
+ridge_preds_train <- predict(ridge_fit, newdata = houses_train, type = "response")
+ridge_preds_test <- predict(ridge_fit, newdata = houses_test, type = "response")
+
+get_rmse <- function(true, predictions){sqrt(mean((true - predictions)^2))}
+get_rmse(houses_train$saleprice, ridge_preds_train)
+get_rmse(houses_test$saleprice, ridge_preds_test)
+
+dim(ridge_preds_train)
+dim(ridge_preds_test)
+
+coefpath(ridge_fit)
+ 
+```
+
+1d) 
+
+```{r}
+ggplot(data = houses_clean, aes(x = TotalSqFt, y = saleprice)) + geom_point() + geom_smooth() + ggtitle("Square Footage vs Sale Price") + theme_fivethirtyeight()
+ggplot(data = houses_clean, aes(x = OverallQual, y = saleprice)) + geom_point() + ggtitle("Overall Quality vs Sale Price") + theme_fivethirtyeight()
+
+```
+
+1e) 
+
+```{r}
+linear <- lm(saleprice ~ Neighborhood + OverallQual + YearRemodAdd + KitchenQual + GarageCars + TotalSqFt, data = houses_train)
+summary(linear)
+
+preds_train = predict(linear, newdata = houses_train)
+preds_test = predict(linear, newdata = houses_test)
+
+results_test = data.frame ("true" = houses_test %>% select(saleprice) %>%
+                             mutate (saleprice = as.numeric(saleprice)),
+                           "Class 1" = preds_test,
+                           "type" = rep("train", length(preds_test)))
+
+results_train = data.frame ("true" = houses_train %>% select(saleprice) %>%
+                             mutate (saleprice = as.numeric(saleprice)),
+                           "Class 1" = preds_train,
+                           "type" = rep("train", length(preds_train)))
+
+
+get_rmse = function(true, predictions){sqrt(mean((true - predictions)^2))}
+rmse_train = get_rmse(houses_train$saleprice, preds_train)
+rmse_test = get_rmse(houses_test$saleprice, preds_test)
+rmse_train
+rmse_test
+
+
+
+```
+
+
+
+1g) 
+
+```{r}
+results <- 
+  data.frame(
+   `preds` = c((preds_test), (preds_train)),
+   `true` = c(houses_test$saleprice, houses_train$saleprice),
+   `type` = c(rep("Test", nrow(houses_test)), rep("Train", nrow(houses_train)))
+  )
+
+ggplot(results, aes(y = preds, x = true)) + geom_point() +
+  geom_abline(aes(intercept = 0, slope = 1), linetype = "dashed") + 
+  facet_wrap(~ type) + 
+  theme_minimal() + 
+  labs(x = "True Sales Price Predictions", 
+       y = "Predicted Sales Price Predictions")
+
+
+```
+
